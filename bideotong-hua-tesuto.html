@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>ビデオ通話テスト</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+      :root {
+        --bg: #f4f6f8;
+        --surface: #ffffff;
+        --surface-2: #e9edf1;
+        --ink: #17202a;
+        --ink-soft: #4d5a68;
+        --line: #d3dbe2;
+        --accent: #0b7285;
+        --accent-ink: #ffffff;
+        --accent-soft: #e3f2f5;
+        --danger: #c92a2a;
+        --danger-ink: #ffffff;
+        --ok: #2b8a3e;
+        --warn-bg: #fff4e0;
+        --warn-ink: #7a4d00;
+        --stage: #10151b;
+        --radius: 14px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12161c;
+          --surface: #1b212b;
+          --surface-2: #242c38;
+          --ink: #e8edf2;
+          --ink-soft: #a7b3c0;
+          --line: #333e4d;
+          --accent: #22b8cf;
+          --accent-ink: #0b2229;
+          --accent-soft: #17333a;
+          --danger: #fa5252;
+          --danger-ink: #2b0d0d;
+          --ok: #51cf66;
+          --warn-bg: #3a2c12;
+          --warn-ink: #ffd8a8;
+          --stage: #05080b;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+        line-height: 1.55;
+        -webkit-text-size-adjust: 100%;
+      }
+      main {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 16px 16px 40px;
+      }
+      h1 {
+        font-size: 1.35rem;
+        margin: 4px 0 2px;
+        letter-spacing: 0.01em;
+      }
+      .lede {
+        margin: 0 0 16px;
+        color: var(--ink-soft);
+        font-size: 0.92rem;
+      }
+
+      /* ---- video stage ---- */
+      .stage {
+        position: relative;
+        background: var(--stage);
+        border-radius: var(--radius);
+        overflow: hidden;
+        aspect-ratio: 4 / 3;
+        max-height: 62vh;
+        width: 100%;
+      }
+      @media (min-width: 640px) {
+        .stage { aspect-ratio: 16 / 10; }
+      }
+      .stage video.remote {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+      }
+      .stage .placeholder {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: #9fb0c0;
+        text-align: center;
+        padding: 20px;
+        font-size: 0.95rem;
+      }
+      .stage .placeholder .big { font-size: 1.05rem; color: #d7e1ea; }
+      .local-wrap {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        width: 30%;
+        max-width: 180px;
+        min-width: 96px;
+        aspect-ratio: 3 / 4;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 2px solid rgba(255,255,255,0.55);
+        background: #000;
+        display: none;
+      }
+      @media (min-width: 640px) {
+        .local-wrap { aspect-ratio: 4 / 3; }
+      }
+      .local-wrap.on { display: block; }
+      .local-wrap video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1); /* mirror */
+        display: block;
+      }
+      .local-wrap .tag {
+        position: absolute;
+        left: 6px;
+        bottom: 4px;
+        font-size: 0.68rem;
+        color: #fff;
+        background: rgba(0,0,0,0.55);
+        padding: 1px 7px;
+        border-radius: 999px;
+      }
+      .conn-badge {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        font-size: 0.78rem;
+        padding: 4px 11px;
+        border-radius: 999px;
+        background: rgba(0,0,0,0.6);
+        color: #e8edf2;
+        display: none;
+        align-items: center;
+        gap: 7px;
+      }
+      .conn-badge.on { display: inline-flex; }
+      .conn-badge .dot {
+        width: 9px; height: 9px; border-radius: 50%;
+        background: #fab005; flex: none;
+      }
+      .conn-badge.live .dot { background: #51cf66; }
+
+      /* ---- panels ---- */
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-top: 14px;
+      }
+      .panel h2 {
+        font-size: 1rem;
+        margin: 0 0 4px;
+      }
+      .panel p.hint {
+        margin: 0 0 12px;
+        font-size: 0.86rem;
+        color: var(--ink-soft);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: stretch;
+      }
+      button {
+        font: inherit;
+        font-size: 0.95rem;
+        min-height: 48px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface-2);
+        color: var(--ink);
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 700;
+      }
+      button.danger {
+        background: var(--danger);
+        border-color: var(--danger);
+        color: var(--danger-ink);
+        font-weight: 700;
+      }
+      button.toggle[aria-pressed="true"] {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--ink);
+      }
+      input[type="text"] {
+        font: inherit;
+        font-size: 1.15rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        min-height: 48px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink);
+        width: 11.5em;
+        text-align: center;
+      }
+      input[type="text"]::placeholder {
+        letter-spacing: 0.08em;
+        font-size: 0.95rem;
+        text-transform: none;
+        color: var(--ink-soft);
+      }
+      .code-display {
+        display: none;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        background: var(--accent-soft);
+        border-radius: 10px;
+        padding: 12px 14px;
+      }
+      .code-display.on { display: flex; }
+      .code-display .code {
+        font-size: 1.7rem;
+        font-weight: 800;
+        letter-spacing: 0.3em;
+        font-variant-numeric: tabular-nums;
+      }
+      .code-display .label {
+        font-size: 0.82rem;
+        color: var(--ink-soft);
+        width: 100%;
+      }
+      .divider {
+        display: flex; align-items: center; gap: 12px;
+        margin: 16px 0 4px;
+        color: var(--ink-soft); font-size: 0.82rem;
+      }
+      .divider::before, .divider::after {
+        content: ""; flex: 1; height: 1px; background: var(--line);
+      }
+
+      /* ---- call controls ---- */
+      .call-controls { display: none; }
+      .call-controls.on { display: block; }
+      .call-controls .row { justify-content: center; }
+      .call-controls button { min-width: 104px; }
+
+      /* ---- status / log ---- */
+      .status-line {
+        margin-top: 14px;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .status-line .dot {
+        width: 10px; height: 10px; border-radius: 50%;
+        background: var(--ink-soft); flex: none;
+        position: relative; top: 1px;
+      }
+      .status-line.ok .dot { background: var(--ok); }
+      .status-line.busy .dot { background: #fab005; }
+      .status-line.err .dot { background: var(--danger); }
+      #log {
+        margin: 10px 0 0;
+        padding: 10px 12px;
+        list-style: none;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        font-size: 0.8rem;
+        color: var(--ink-soft);
+        max-height: 148px;
+        overflow-y: auto;
+      }
+      #log li { padding: 2px 0; border-bottom: 1px dashed var(--line); }
+      #log li:last-child { border-bottom: none; }
+      #log .t { color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 6px; }
+
+      .note {
+        margin-top: 14px;
+        background: var(--warn-bg);
+        color: var(--warn-ink);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 0.85rem;
+      }
+      .note strong { display: block; margin-bottom: 2px; }
+      .note ul { margin: 6px 0 0; padding-left: 1.2em; }
+      .note li { margin: 3px 0; }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ビデオ通話テスト</h1>
+      <p class="lede">PeerJS（WebRTC）で1対1のビデオ通話ができるか確かめる最小テストです。端末2台で開いて、片方が部屋を作り、もう片方が部屋コードで入ります。</p>
+
+      <div class="stage" aria-label="通話映像">
+        <video id="remoteVideo" class="remote" autoplay playsinline></video>
+        <div class="placeholder" id="stagePlaceholder">
+          <div class="big">相手の映像はここに映ります</div>
+          <div>下の「部屋を作る」か「部屋に入る」から始めてください</div>
+        </div>
+        <div class="conn-badge" id="connBadge"><span class="dot"></span><span id="connBadgeText">接続中…</span></div>
+        <div class="local-wrap" id="localWrap">
+          <video id="localVideo" autoplay playsinline muted></video>
+          <span class="tag">自分</span>
+        </div>
+      </div>
+
+      <div class="status-line" id="statusLine">
+        <span class="dot"></span>
+        <span id="statusText">まだ接続していません</span>
+      </div>
+
+      <section class="panel" id="setupPanel">
+        <h2>部屋を作る（ホスト）</h2>
+        <p class="hint">部屋コードが発行されます。相手にそのコードを伝えてください。</p>
+        <div class="row">
+          <button type="button" class="primary" id="createBtn">部屋を作る</button>
+        </div>
+        <div class="code-display" id="codeDisplay" style="margin-top:12px;">
+          <span class="label">この部屋コードを相手に伝えてください</span>
+          <span class="code" id="roomCodeText">------</span>
+          <button type="button" id="copyBtn">コードをコピー</button>
+          <span id="copyMsg" style="font-size:0.82rem;"></span>
+        </div>
+
+        <div class="divider">または</div>
+
+        <h2 style="margin-top:10px;">部屋に入る（ゲスト）</h2>
+        <p class="hint">相手から聞いた6文字の部屋コードを入力してください。</p>
+        <div class="row">
+          <input type="text" id="joinInput" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="部屋コード" aria-label="部屋コード" />
+          <button type="button" class="primary" id="joinBtn">部屋に入る</button>
+        </div>
+      </section>
+
+      <section class="panel call-controls" id="callControls">
+        <div class="row">
+          <button type="button" class="toggle" id="micBtn" aria-pressed="false">🎙 マイク：オン</button>
+          <button type="button" class="toggle" id="camBtn" aria-pressed="false">📷 カメラ：オン</button>
+          <button type="button" class="danger" id="hangupBtn">通話を終了</button>
+        </div>
+      </section>
+
+      <ul id="log" aria-label="接続ログ"></ul>
+
+      <div class="note">
+        <strong>つながらない時に見るポイント</strong>
+        <ul>
+          <li>カメラ・マイクの許可ダイアログで「許可」を押してください（HTTPSのページでのみ動作します）。</li>
+          <li>同じ部屋コードで、片方が「作る」、もう片方が「入る」になっていますか。</li>
+          <li>回線の相性によっては映像が届かないことがあります（NAT越えの問題）。その場合は同じWi-Fi同士で試すと切り分けできます。</li>
+          <li>映像は端末同士の直接通信（P2P）で、サーバーには送られません。</li>
+        </ul>
+      </div>
+    </main>
+
+    <script>
+      (function () {
+        'use strict';
+
+        var PREFIX = 'muse-vcall-test-';
+        var CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 紛らわしい文字を除外
+
+        var els = {
+          remoteVideo: document.getElementById('remoteVideo'),
+          localVideo: document.getElementById('localVideo'),
+          localWrap: document.getElementById('localWrap'),
+          placeholder: document.getElementById('stagePlaceholder'),
+          connBadge: document.getElementById('connBadge'),
+          connBadgeText: document.getElementById('connBadgeText'),
+          statusLine: document.getElementById('statusLine'),
+          statusText: document.getElementById('statusText'),
+          setupPanel: document.getElementById('setupPanel'),
+          createBtn: document.getElementById('createBtn'),
+          joinBtn: document.getElementById('joinBtn'),
+          joinInput: document.getElementById('joinInput'),
+          codeDisplay: document.getElementById('codeDisplay'),
+          roomCodeText: document.getElementById('roomCodeText'),
+          copyBtn: document.getElementById('copyBtn'),
+          copyMsg: document.getElementById('copyMsg'),
+          callControls: document.getElementById('callControls'),
+          micBtn: document.getElementById('micBtn'),
+          camBtn: document.getElementById('camBtn'),
+          hangupBtn: document.getElementById('hangupBtn'),
+          log: document.getElementById('log')
+        };
+
+        var peer = null;
+        var localStream = null;
+        var currentCall = null;
+        var isHost = false;
+        var roomCode = '';
+        var micOn = true;
+        var camOn = true;
+        var callStartedAt = 0;
+        var timerId = null;
+
+        function now() {
+          var d = new Date();
+          function p(n) { return (n < 10 ? '0' : '') + n; }
+          return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+        }
+
+        function log(msg) {
+          var li = document.createElement('li');
+          var t = document.createElement('span');
+          t.className = 't';
+          t.textContent = now();
+          li.appendChild(t);
+          li.appendChild(document.createTextNode(msg));
+          els.log.insertBefore(li, els.log.firstChild);
+        }
+
+        function setStatus(kind, text) {
+          els.statusLine.className = 'status-line' + (kind ? ' ' + kind : '');
+          els.statusText.textContent = text;
+        }
+
+        function makeCode() {
+          var s = '';
+          for (var i = 0; i < 6; i++) {
+            s += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
+          }
+          return s;
+        }
+
+        function startTimer() {
+          callStartedAt = Date.now();
+          stopTimer();
+          timerId = setInterval(function () {
+            var sec = Math.floor((Date.now() - callStartedAt) / 1000);
+            var m = Math.floor(sec / 60);
+            var s = sec % 60;
+            els.connBadgeText.textContent = '通話中 ' + m + ':' + (s < 10 ? '0' : '') + s;
+          }, 500);
+        }
+        function stopTimer() {
+          if (timerId) { clearInterval(timerId); timerId = null; }
+        }
+
+        function getLocalMedia() {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            return Promise.reject(new Error('このブラウザ／ページではカメラが使えません（HTTPSが必要です）'));
+          }
+          return navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: true
+          });
+        }
+
+        function showLocal(stream) {
+          els.localVideo.srcObject = stream;
+          els.localWrap.classList.add('on');
+          var p = els.localVideo.play();
+          if (p && p.catch) { p.catch(function () {}); }
+        }
+
+        function wireCall(call) {
+          currentCall = call;
+          call.on('stream', function (remoteStream) {
+            log('相手の映像を受信しました');
+            els.remoteVideo.srcObject = remoteStream;
+            els.placeholder.classList.add('hidden');
+            els.connBadge.classList.add('on', 'live');
+            setStatus('ok', '通話中です');
+            var p = els.remoteVideo.play();
+            if (p && p.catch) { p.catch(function () {}); }
+            startTimer();
+          });
+          call.on('close', function () {
+            log('相手が通話を終了しました');
+            endCall(false);
+            setStatus('', '相手が通話を終了しました。もう一度始めるには部屋を作り直してください');
+          });
+          call.on('error', function (err) {
+            log('通話エラー: ' + (err && err.type ? err.type : err));
+            setStatus('err', '通話でエラーが発生しました: ' + (err && err.type ? err.type : '不明'));
+          });
+        }
+
+        function wirePeerErrors(p) {
+          p.on('error', function (err) {
+            var type = err && err.type ? err.type : '';
+            if (type === 'peer-unavailable') {
+              log('相手が見つかりませんでした（部屋コード違い、またはホスト未接続）');
+              setStatus('err', '部屋が見つかりません。コードが正しいか、相手が「部屋を作る」を押したまま待っているか確認してください');
+              teardown();
+            } else if (type === 'unavailable-id') {
+              log('その部屋コードは使用中でした。作り直します');
+              teardown();
+              setStatus('err', '部屋コードが重複しました。「部屋を作る」をもう一度押してください');
+            } else if (type === 'network' || type === 'server-error') {
+              log('仲介サーバーに接続できませんでした: ' + type);
+              setStatus('err', '仲介サーバーに接続できませんでした。通信環境を確認して再試行してください');
+              teardown();
+            } else {
+              log('PeerJSエラー: ' + (type || err));
+            }
+          });
+          p.on('disconnected', function () {
+            log('仲介サーバーとの接続が切れました。再接続を試みます');
+            try { p.reconnect(); } catch (e) {}
+          });
+        }
+
+        function beginUI() {
+          els.setupPanel.classList.add('hidden');
+          els.callControls.classList.add('on');
+          els.connBadge.classList.add('on');
+          els.connBadge.classList.remove('live');
+          els.connBadgeText.textContent = isHost ? '相手の参加を待っています…' : '接続中…';
+        }
+
+        function createRoom() {
+          if (typeof Peer === 'undefined') {
+            setStatus('err', 'PeerJSの読み込みに失敗しました。通信環境を確認してページを再読み込みしてください');
+            return;
+          }
+          els.createBtn.disabled = true;
+          els.joinBtn.disabled = true;
+          setStatus('busy', 'カメラとマイクを準備しています…');
+          getLocalMedia().then(function (stream) {
+            localStream = stream;
+            showLocal(stream);
+            roomCode = makeCode();
+            isHost = true;
+            peer = new Peer(PREFIX + roomCode);
+            wirePeerErrors(peer);
+            peer.on('open', function () {
+              els.roomCodeText.textContent = roomCode;
+              els.codeDisplay.classList.add('on');
+              // コード表示はセットアップパネル内なので、パネルは残したまま待機表示にする
+              els.setupPanel.classList.remove('hidden');
+              els.createBtn.disabled = true;
+              els.joinBtn.disabled = true;
+              els.joinInput.disabled = true;
+              els.callControls.classList.add('on');
+              els.connBadge.classList.add('on');
+              els.connBadgeText.textContent = '相手の参加を待っています…';
+              setStatus('busy', '部屋を作りました。相手が入ってくるのを待っています');
+              log('部屋を作成: コード ' + roomCode);
+            });
+            peer.on('call', function (call) {
+              log('相手から着信しました。応答します');
+              call.answer(localStream);
+              wireCall(call);
+              setStatus('busy', '相手と接続しています…');
+            });
+          }).catch(function (err) {
+            els.createBtn.disabled = false;
+            els.joinBtn.disabled = false;
+            log('カメラ取得に失敗: ' + err.message);
+            setStatus('err', 'カメラ／マイクを使えませんでした: ' + err.message);
+          });
+        }
+
+        function joinRoom() {
+          var code = (els.joinInput.value || '').trim().toUpperCase();
+          if (code.length !== 6) {
+            setStatus('err', '6文字の部屋コードを入力してください');
+            els.joinInput.focus();
+            return;
+          }
+          if (typeof Peer === 'undefined') {
+            setStatus('err', 'PeerJSの読み込みに失敗しました。通信環境を確認してページを再読み込みしてください');
+            return;
+          }
+          els.createBtn.disabled = true;
+          els.joinBtn.disabled = true;
+          setStatus('busy', 'カメラとマイクを準備しています…');
+          getLocalMedia().then(function (stream) {
+            localStream = stream;
+            showLocal(stream);
+            roomCode = code;
+            isHost = false;
+            peer = new Peer();
+            wirePeerErrors(peer);
+            peer.on('open', function () {
+              beginUI();
+              setStatus('busy', '部屋 ' + code + ' に接続しています…');
+              log('部屋 ' + code + ' へ発信します');
+              var call = peer.call(PREFIX + code, localStream);
+              if (!call) {
+                setStatus('err', '発信に失敗しました');
+                teardown();
+                return;
+              }
+              wireCall(call);
+              // 一定時間ストリームが来なければ知らせる
+              setTimeout(function () {
+                if (currentCall && !els.remoteVideo.srcObject) {
+                  log('10秒経っても相手の映像が届いていません');
+                  setStatus('err', '相手の映像が届いていません。ホストが待機中か、回線の相性（NAT）の問題の可能性があります');
+                }
+              }, 10000);
+            });
+          }).catch(function (err) {
+            els.createBtn.disabled = false;
+            els.joinBtn.disabled = false;
+            log('カメラ取得に失敗: ' + err.message);
+            setStatus('err', 'カメラ／マイクを使えませんでした: ' + err.message);
+          });
+        }
+
+        function teardown() {
+          stopTimer();
+          if (currentCall) {
+            try { currentCall.close(); } catch (e) {}
+            currentCall = null;
+          }
+          if (peer) {
+            try { peer.destroy(); } catch (e) {}
+            peer = null;
+          }
+          if (localStream) {
+            localStream.getTracks().forEach(function (t) { t.stop(); });
+            localStream = null;
+          }
+          els.remoteVideo.srcObject = null;
+          els.localVideo.srcObject = null;
+          els.localWrap.classList.remove('on');
+          els.placeholder.classList.remove('hidden');
+          els.connBadge.classList.remove('on', 'live');
+          els.callControls.classList.remove('on');
+          els.codeDisplay.classList.remove('on');
+          els.setupPanel.classList.remove('hidden');
+          els.createBtn.disabled = false;
+          els.joinBtn.disabled = false;
+          els.joinInput.disabled = false;
+          micOn = true; camOn = true;
+          els.micBtn.textContent = '🎙 マイク：オン';
+          els.micBtn.setAttribute('aria-pressed', 'false');
+          els.camBtn.textContent = '📷 カメラ：オン';
+          els.camBtn.setAttribute('aria-pressed', 'false');
+        }
+
+        function endCall(notify) {
+          teardown();
+          if (notify) {
+            log('通話を終了しました');
+            setStatus('', '通話を終了しました');
+          }
+        }
+
+        els.createBtn.addEventListener('click', createRoom);
+        els.joinBtn.addEventListener('click', joinRoom);
+        els.joinInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { joinRoom(); }
+        });
+        els.hangupBtn.addEventListener('click', function () { endCall(true); });
+
+        els.copyBtn.addEventListener('click', function () {
+          var code = els.roomCodeText.textContent;
+          function done(ok) {
+            els.copyMsg.textContent = ok ? 'コピーしました' : 'コピーできませんでした（コードを長押しで選択してください）';
+            setTimeout(function () { els.copyMsg.textContent = ''; }, 2500);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code).then(function () { done(true); }, function () { done(false); });
+          } else {
+            done(false);
+          }
+        });
+
+        els.micBtn.addEventListener('click', function () {
+          if (!localStream) return;
+          micOn = !micOn;
+          localStream.getAudioTracks().forEach(function (t) { t.enabled = micOn; });
+          els.micBtn.textContent = micOn ? '🎙 マイク：オン' : '🎙 マイク：オフ';
+          els.micBtn.setAttribute('aria-pressed', String(!micOn));
+          log('マイクを' + (micOn ? 'オン' : 'オフ') + 'にしました');
+        });
+
+        els.camBtn.addEventListener('click', function () {
+          if (!localStream) return;
+          camOn = !camOn;
+          localStream.getVideoTracks().forEach(function (t) { t.enabled = camOn; });
+          els.camBtn.textContent = camOn ? '📷 カメラ：オン' : '📷 カメラ：オフ';
+          els.camBtn.setAttribute('aria-pressed', String(!camOn));
+          log('カメラを' + (camOn ? 'オン' : 'オフ') + 'にしました');
+        });
+
+        window.addEventListener('beforeunload', function () {
+          if (localStream) {
+            localStream.getTracks().forEach(function (t) { t.stop(); });
+          }
+          if (peer) { try { peer.destroy(); } catch (e) {} }
+        });
+
+        log('ページを読み込みました。PeerJS ' + (typeof Peer !== 'undefined' ? '読み込みOK' : '未読み込み'));
+      })();
+    </script>
+  </body>
+</html>
